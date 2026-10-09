@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Library | Research Assistant{% endblock %}
+{% block content %}
+<section class="intro">
+  <h1>Your library</h1>
+  <p class="lede">Papers you saved from search or uploaded. Open one to summarize it or ask questions about it.</p>
+</section>
+
+<section class="upload-panel" aria-labelledby="upload-heading">
+  <h2 id="upload-heading">Add a PDF</h2>
+  <p class="hint">The title, authors, year, and abstract are read from its first pages. Up to 50 MB. Scanned PDFs without selectable text aren't supported.</p>
+  <form class="upload-form" action="/library/upload" method="post" enctype="multipart/form-data"
+        hx-post="/library/upload" hx-target="#upload-status"
+        hx-indicator="#upload-working" hx-disabled-elt="find button">
+    <input type="file" name="file" accept="application/pdf,.pdf" required aria-label="PDF file">
+    <button type="submit">Upload PDF</button>
+  </form>
+  <p id="upload-working" class="working htmx-indicator" role="status">Reading the PDF and finding its title, authors, and abstract…</p>
+  <div id="upload-status" aria-live="polite"></div>
+</section>
+
+<section class="library" aria-label="Saved papers">
+  <ol class="entries library-entries">
+    {% for p in papers %}
+    <li class="entry">
+      <div class="entry-margin">{{ p.year or "—" }}</div>
+      <div class="entry-body">
+        <h2 class="entry-title"><a href="/papers/{{ p.id }}">{{ p.title }}</a></h2>
+        <p class="authors">{{ p.authors|author_list }}</p>
+        <p class="facts">
+          <span>{{ "From arXiv" if p.source == "arxiv" else "Uploaded PDF" }}</span>
+          {% if p.has_summary %}<span>Summarized</span>{% endif %}
+          {% if p.question_count %}<span>{{ p.question_count }} {{ "question" if p.question_count == 1 else "questions" }}</span>{% endif %}
+        </p>
+      </div>
+      <button type="button" class="button-danger"
+              hx-delete="/papers/{{ p.id }}" hx-target="closest li" hx-swap="outerHTML"
+              hx-confirm="Delete “{{ p.title }}” and its questions? This can't be undone."
+              aria-label="Delete {{ p.title }}">Delete</button>
+    </li>
+    {% endfor %}
+  </ol>
+  <p class="empty-note">Nothing here yet. <a href="/">Search arXiv</a> to save papers, or add a PDF above.</p>
+</section>
+{% endblock %}

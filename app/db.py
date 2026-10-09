@@ -117,6 +117,11 @@ def list_papers() -> list[dict[str, Any]]:
     return [_paper(row) for row in rows]
 
 
+def count_papers() -> int:
+    with connect() as conn:
+        return int(conn.execute("SELECT COUNT(*) FROM papers").fetchone()[0])
+
+
 def find_by_arxiv_id(arxiv_id: str) -> int | None:
     """Return the id of the library paper with this arXiv ID, or None."""
     with connect() as conn:

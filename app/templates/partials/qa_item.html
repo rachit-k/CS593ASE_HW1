@@ -1,0 +1,7 @@
+<li class="qa-item">
+  <span class="margin-label" aria-hidden="true">Q</span>
+  <p class="question">{{ item.question }}</p>
+  <span class="margin-label" aria-hidden="true">A</span>
+  <div class="prose answer">{{ item.answer|markdown }}</div>
+</li>
+{% if clear_error %}<div id="qa-error" aria-live="polite" hx-swap-oob="true"></div>{% endif %}

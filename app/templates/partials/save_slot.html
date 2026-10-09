@@ -1,0 +1,20 @@
+<div class="save-slot">
+  {% if paper_id %}
+    <span class="saved-note">In your library</span>
+    <a class="button button-quiet" href="/papers/{{ paper_id }}">Open</a>
+  {% else %}
+    <form hx-post="/library" hx-target="closest .save-slot" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="arxiv_id" value="{{ result.arxiv_id }}">
+      <input type="hidden" name="title" value="{{ result.title }}">
+      <input type="hidden" name="authors" value='{{ result.authors|tojson }}'>
+      <input type="hidden" name="year" value="{{ result.year or '' }}">
+      <input type="hidden" name="abstract" value="{{ result.abstract }}">
+      <button type="submit">
+        <span class="idle-label">Save to library</span>
+        <span class="busy-label">Saving and downloading the PDF…</span>
+      </button>
+    </form>
+    {% if error %}<p class="inline-error" role="alert">{{ error }}</p>{% endif %}
+  {% endif %}
+</div>
+{% if saved_now %}{% with oob=True %}{% include "partials/library_count.html" %}{% endwith %}{% endif %}

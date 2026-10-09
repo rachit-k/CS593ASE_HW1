@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}{{ paper.title }} | Research Assistant{% endblock %}
+{% block content %}
+<article class="paper">
+  <a class="back-link" href="/library">Back to library</a>
+
+  <header class="paper-head">
+    <h1>{{ paper.title }}</h1>
+    <p class="authors">{{ paper.authors|join(", ") if paper.authors else "Authors unknown" }}</p>
+    <p class="facts">
+      <span>{{ paper.year or "Year unknown" }}</span>
+      <span>{% if paper.source == "arxiv" %}arXiv {{ paper.arxiv_id }}{% else %}Uploaded PDF{% endif %}</span>
+    </p>
+    <p class="paper-actions">
+      <a class="button button-quiet" href="/papers/{{ paper.id }}/pdf" target="_blank">Open PDF</a>
+      {% if paper.url %}<a class="button button-quiet" href="{{ paper.url }}" target="_blank" rel="noopener">View on arXiv</a>{% endif %}
+    </p>
+  </header>
+
+  {% if notice == "metadata-fallback" %}
+    {% with kind="info", message="Gemini wasn't available, so the title, authors, and abstract were read from the PDF file itself and may be incomplete." %}{% include "partials/alert.html" %}{% endwith %}
+  {% endif %}
+  {% if not gemini_ready %}
+    {% with kind="warn", message="Summaries and questions need a Gemini API key. Add GEMINI_API_KEY to the .env file (see the README), then restart the app." %}{% include "partials/alert.html" %}{% endwith %}
+  {% endif %}
+  {% if truncated %}
+    {% with kind="info", message="This document is very long, so only its first 400,000 characters are sent to Gemini." %}{% include "partials/alert.html" %}{% endwith %}
+  {% endif %}
+
+  <section class="block" aria-labelledby="abstract-heading">
+    <h2 id="abstract-heading">Abstract</h2>
+    <p class="abstract">{{ paper.abstract or "No abstract was found for this paper." }}</p>
+  </section>
+
+  <section class="block" id="summary-panel" aria-labelledby="summary-heading">
+    {% include "partials/summary.html" %}
+  </section>
+
+  <section class="block" aria-labelledby="qa-heading">
+    <h2 id="qa-heading">Questions</h2>
+    <ol id="qa-list" class="qa-list">
+      {% for item in questions %}{% include "partials/qa_item.html" %}{% endfor %}
+    </ol>
+    <p class="empty-note">Nothing asked yet. Pick a suggestion or write your own question.</p>
+
+    <div class="suggestions" role="group" aria-label="Suggested questions">
+      {% for question in starter_questions %}
+      <button type="button" class="chip"
+              hx-post="/papers/{{ paper.id }}/questions" hx-vals='{{ {"question": question}|tojson }}'
+              hx-target="#qa-list" hx-swap="beforeend"
+              hx-indicator="#qa-working" hx-disabled-elt="this">{{ question }}</button>
+      {% endfor %}
+    </div>
+
+    <form class="ask-form"
+          hx-post="/papers/{{ paper.id }}/questions" hx-target="#qa-list" hx-swap="beforeend"
+          hx-indicator="#qa-working" hx-disabled-elt="find fieldset"
+          hx-on::after-request="if (event.detail.successful) this.reset()">
+      <fieldset>
+        <input type="text" name="question" required maxlength="1000"
+               placeholder="Ask anything about this paper" aria-label="Your question">
+        <button type="submit">Ask</button>
+      </fieldset>
+    </form>
+    <p id="qa-working" class="working htmx-indicator" role="status">Gemini is reading the paper to answer…</p>
+    <div id="qa-error" aria-live="polite"></div>
+  </section>
+</article>
+{% endblock %}

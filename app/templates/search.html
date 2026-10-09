@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}{% if q %}{{ q }} | {% endif %}Search | Research Assistant{% endblock %}
+{% block content %}
+<section class="intro">
+  <h1>Find papers on arXiv</h1>
+  <form class="search-form" action="/" method="get" role="search"
+        hx-get="/" hx-target="#results" hx-push-url="true"
+        hx-indicator="#search-working" hx-disabled-elt="find button">
+    <input type="search" name="q" value="{{ q }}" required maxlength="300"
+           placeholder="A topic, some keywords, or an arXiv ID"
+           aria-label="Search arXiv"{% if not q %} autofocus{% endif %}>
+    <button type="submit">Search</button>
+  </form>
+  <p class="hint">Results include every word you type. Paste an arXiv ID or link to go straight to that paper.</p>
+  <p id="search-working" class="working htmx-indicator" role="status">Searching arXiv. When arXiv is busy, this retries for a few seconds.</p>
+</section>
+
+<section id="results" class="results" aria-live="polite">
+  {% if q %}{% include "partials/results.html" %}{% endif %}
+</section>
+{% endblock %}

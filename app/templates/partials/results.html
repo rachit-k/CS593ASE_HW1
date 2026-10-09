@@ -1,0 +1,27 @@
+{% if error %}
+  {% with message=error, kind="error" %}{% include "partials/alert.html" %}{% endwith %}
+{% elif results is not none %}
+  {% if results %}
+  <p class="results-count">{{ results|length }} {{ "paper" if results|length == 1 else "papers" }} for “{{ q }}”, best match first</p>
+  <ol class="entries">
+    {% for r in results %}
+    <li class="entry">
+      <div class="entry-margin" title="Year first published on arXiv">{{ r.year or "—" }}</div>
+      <div class="entry-body">
+        <h2 class="entry-title"><a href="{{ r.url }}" target="_blank" rel="noopener">{{ r.title }}</a></h2>
+        <p class="authors">{{ r.authors|author_list }}</p>
+        {% if r.abstract %}
+        <p class="abstract{% if r.abstract|length > 360 %} clamped{% endif %}" id="abstract-{{ loop.index }}">{{ r.abstract }}</p>
+        {% if r.abstract|length > 360 %}
+        <button type="button" class="link-button" aria-controls="abstract-{{ loop.index }}" aria-expanded="false" onclick="toggleAbstract(this)">Show full abstract</button>
+        {% endif %}
+        {% endif %}
+        {% with result=r, paper_id=in_library.get(r.arxiv_id) %}{% include "partials/save_slot.html" %}{% endwith %}
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p class="empty-state">No papers matched “{{ q }}”. Try fewer or broader keywords.</p>
+  {% endif %}
+{% endif %}

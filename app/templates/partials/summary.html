@@ -1,0 +1,20 @@
+<div class="block-head">
+  <h2 id="summary-heading">Summary</h2>
+  {% if paper.summary %}
+  <button type="button" class="button-quiet"
+          hx-post="/papers/{{ paper.id }}/summary" hx-target="#summary-panel"
+          hx-indicator="#summary-working" hx-disabled-elt="this">Regenerate</button>
+  {% endif %}
+</div>
+{% if error %}
+  {% with message=error, kind="error" %}{% include "partials/alert.html" %}{% endwith %}
+{% endif %}
+{% if paper.summary %}
+  <div class="prose summary">{{ paper.summary|markdown }}</div>
+{% else %}
+  <p class="hint">Gemini reads the whole paper and writes a short summary: the problem, the approach, the key results, and the limitations.</p>
+  <button type="button"
+          hx-post="/papers/{{ paper.id }}/summary" hx-target="#summary-panel"
+          hx-indicator="#summary-working" hx-disabled-elt="this">Summarize paper</button>
+{% endif %}
+<p id="summary-working" class="working htmx-indicator" role="status">Gemini is reading the paper and writing a summary. This usually takes 5 to 30 seconds.</p>

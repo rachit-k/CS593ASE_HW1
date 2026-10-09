@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {# Swap 4xx/5xx responses into the page too, so error messages show up inline. #}
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "responseHandling": [{"code": "204", "swap": false}, {"code": "[23]..", "swap": true}, {"code": "[45]..", "swap": true, "error": true}, {"code": "...", "swap": false}]}'>
+  <title>{% block title %}Research Assistant{% endblock %}</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='15' width='26' height='9' rx='2' fill='%23ffe45c'/%3E%3Crect x='5' y='7' width='22' height='3' rx='1.5' fill='%231d232b'/%3E%3Crect x='5' y='13' width='16' height='3' rx='1.5' fill='%231d232b'/%3E%3Crect x='5' y='19' width='19' height='3' rx='1.5' fill='%231d232b'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/htmx.min.js"></script>
+  <script>
+    function toggleAbstract(button) {
+      const abstract = document.getElementById(button.getAttribute("aria-controls"));
+      const expanded = !abstract.classList.toggle("clamped");
+      button.setAttribute("aria-expanded", String(expanded));
+      button.textContent = expanded ? "Show less" : "Show full abstract";
+    }
+  </script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="brand" href="/">Research Assistant</a>
+      <nav aria-label="Main">
+        <a href="/"{% if active == "search" %} aria-current="page"{% endif %}>Search</a>
+        <a href="/library"{% if active == "library" %} aria-current="page"{% endif %}>Library {% include "partials/library_count.html" %}</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page">
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="site-footer">
+    Search results come from arXiv. Summaries and answers are written by Gemini from the paper's text and can be wrong, so check anything important against the paper.
+  </footer>
+</body>
+</html>

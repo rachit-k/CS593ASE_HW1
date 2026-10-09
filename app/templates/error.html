@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}{{ heading }} | Research Assistant{% endblock %}
+{% block content %}
+<section class="intro">
+  <h1>{{ heading }}</h1>
+  <p class="lede">{{ message }}</p>
+  <p class="paper-actions">
+    <a class="button" href="/library">Go to your library</a>
+    <a class="button button-quiet" href="/">Search arXiv</a>
+  </p>
+</section>
+{% endblock %}
