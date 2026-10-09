@@ -53,7 +53,7 @@ Open http://127.0.0.1:8000. Stop the server with Ctrl+C. Your library is kept in
 
 ## Using the app
 
-1. **Search.** Type a topic, for example `code review automation`, and press Search. Every word you type must appear in a paper's record. Pasting an arXiv ID or link (for example `1706.03762`) goes straight to that paper.
+1. **Search.** Type a topic, for example `code review automation`, and press Search. Every word you type must appear in a paper's record, except common words such as "a", "the", and "of", which arXiv doesn't index. Pasting an arXiv ID or link (for example `1706.03762`) goes straight to that paper.
 2. **Save.** Click **Save to library** on a result. The app downloads the PDF from arXiv, which takes a few seconds, and the button changes to **Open**.
 3. **Upload.** On the **Library** page, choose a PDF under **Add a PDF** and click **Upload PDF**. You'll land on the new paper's page.
 4. **Summarize.** On a paper's page, click **Summarize paper**. It usually takes 5 to 30 seconds.

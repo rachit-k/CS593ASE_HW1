@@ -18,6 +18,12 @@ API_URL = "https://export.arxiv.org/api/query"
 USER_AGENT = "AI-Research-Assistant/1.0 (local student project)"
 MAX_RESULTS = 10
 MAX_QUERY_WORDS = 12
+# arXiv leaves these common words (Lucene's standard English stop words) out of its
+# title and abstract index, so a query that requires one of them misses most papers.
+STOP_WORDS = frozenset(
+    "a an and are as at be but by for if in into is it no not of on or such"
+    " that the their then there these they this to was will with".split()
+)
 TIMEOUT_SECONDS = 15
 RETRY_DELAYS = (3, 6)  # seconds to wait before the 2nd and 3rd attempts
 RETRY_STATUSES = {429, 500, 502, 503, 504}
@@ -29,7 +35,7 @@ TRANSPORT: httpx.BaseTransport | None = None
 _ARXIV_ID_RE = re.compile(r"^(?:\d{4}\.\d{4,5}|[a-z][a-z\-]*(?:\.[A-Z]{2})?/\d{7})$")
 _ID_PREFIX_RE = re.compile(r"^(?:https?://(?:www\.|export\.)?arxiv\.org/(?:abs|pdf)/|arxiv:)", re.I)
 _VERSION_RE = re.compile(r"v\d+$")
-_NON_WORD_RE = re.compile(r"[^\w\-.]+")  # anything but letters, digits, _, - and .
+_NON_WORD_RE = re.compile(r"[^\w\-.']+")  # anything but letters, digits, _, -, . and '
 
 
 class ArxivError(Exception):
@@ -76,15 +82,17 @@ def pdf_url(arxiv_id: str) -> str:
 def build_params(query: str) -> dict[str, str | int]:
     """Turn what the user typed into arXiv API query parameters.
 
-    An arXiv ID is looked up directly. Otherwise every word must match somewhere
-    in the record (`all:` field, joined with AND). Raises ValueError if nothing
-    searchable is left.
+    An arXiv ID is looked up directly. Otherwise every word except STOP_WORDS must
+    match somewhere in the record (`all:` field, joined with AND). Raises ValueError
+    if nothing searchable is left.
     """
     arxiv_id = normalize_id(query)
     if arxiv_id:
         return {"id_list": arxiv_id, "max_results": 1}
-    words = [word.strip("-.").lower() for word in _NON_WORD_RE.split(query)]
-    words = [word for word in words if word][:MAX_QUERY_WORDS]
+    # arXiv indexes "Don't" as one word, so apostrophes stay inside words (curly ones
+    # from copied titles are straightened first).
+    words = [word.strip("-.'").lower() for word in _NON_WORD_RE.split(query.replace("’", "'"))]
+    words = [word for word in words if word and word not in STOP_WORDS][:MAX_QUERY_WORDS]
     if not words:
         raise ValueError("Type a topic or some keywords to search.")
     return {

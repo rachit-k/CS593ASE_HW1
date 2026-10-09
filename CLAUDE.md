@@ -41,6 +41,7 @@ A local web app (CS59300 HW1) for searching arXiv, saving papers to a SQLite lib
 
 - Never read, print, or edit `.env`; it holds the user's API key. `.claude/settings.json` blocks the file tools, but not shell commands like `cat`, so don't run those on it either.
 - arXiv throttles automated clients (HTTP 429) and asks for at most one request every 3 seconds. Keep one request per search and keep the backoff.
+- arXiv doesn't index stop words (`arxiv_client.STOP_WORDS`) in titles and abstracts, so `build_params` must skip them; a required `all:a` silently hides most papers. arXiv also indexes "don't" as one word, so apostrophes stay inside words.
 - Gemini free-tier quotas are per model and per project. A 429 from Gemini is a quota, not a bug; `GEMINI_MODEL` is the escape hatch.
 - The thinking level is only sent to `gemini-3*` models, because older models reject it.
 - `data/` is the user's library. Don't delete it.
