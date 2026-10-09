@@ -52,6 +52,8 @@ The paper page shows the stored summary if one exists, otherwise a Summarize but
 
 Gemini returns Markdown, which the server renders to HTML with raw HTML disabled, so model output can't inject markup into the page.
 
+The header shows how many papers are in the library; the count updates when a paper is saved or deleted. After an upload that had to use the metadata fallbacks (section 8), the paper page says so, because the title and authors may be incomplete.
+
 ## 5. Data model
 
 ```sql
@@ -105,7 +107,7 @@ The app calls Gemini through the official `google-genai` Python SDK. All three f
 
 **Retries.** The arXiv API has been throttling heavily during 2026, so the client retries on HTTP 429, 5xx responses, and timeouts. It makes up to 3 attempts, waiting 3 s and then 6 s, with a 15 s timeout per attempt. If every attempt fails, the page shows "arXiv is busy right now — try again in a few seconds."
 
-**Result fields.** The year comes from the `published` date of the first version. The abstract page link and the PDF link come from the entry's links.
+**Result fields.** The year comes from the `published` date of the first version. The abstract page link and the PDF link are built from the arXiv ID.
 
 **Saving.** The card submits the result's metadata along with its arXiv ID, so saving never needs a second arXiv API call. The server checks the ID against arXiv's ID formats and builds the abstract and PDF links from it, rather than accepting links from the form. That way the server only ever downloads from arxiv.org.
 
@@ -115,7 +117,7 @@ Saving downloads the PDF with a 30 s timeout and a 50 MB cap, checks that the fi
 
 **Upload checks.** Uploads accept files up to 50 MB, and the file must actually be a PDF. Files are stored under `DATA_DIR/pdfs/` with generated names, never the user's file name.
 
-**Text extraction.** PyMuPDF extracts the text page by page. If the result has fewer than 200 non-whitespace characters, the PDF is treated as scanned and rejected, because OCR is out of scope. The stored file is then deleted.
+**Text extraction.** PyMuPDF extracts the text page by page. If the result has fewer than 200 non-whitespace characters, the PDF is treated as scanned and rejected, because OCR is out of scope. Password-protected and damaged PDFs are rejected too. Uploads are checked before anything is written to disk, so a rejected file leaves nothing behind.
 
 **Metadata fallback.** Upload metadata comes from the first source that works:
 
@@ -140,6 +142,7 @@ An upload never fails because of metadata alone. That also means uploads keep wo
 | Gemini quota exhausted (HTTP 429) | Message names the model and suggests waiting or switching `GEMINI_MODEL` |
 | Other Gemini failure or timeout | Short message; nothing is stored |
 | Unknown paper id | 404 page |
+| Unexpected server error | Friendly error page, or an inline alert for HTMX requests; the traceback stays in the terminal |
 
 Error partials carry real HTTP status codes. HTMX is configured to swap 4xx and 5xx responses into the page, so errors appear inline instead of being silently dropped.
 

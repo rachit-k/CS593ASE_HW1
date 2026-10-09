@@ -26,18 +26,20 @@ Each step ends with a commit.
 
 The sandbox can't reach arXiv or Gemini, so network calls are replaced with fakes at the three seams named in design §3.
 
-- [ ] App imports and starts; `GET /`, `/library`, and a missing paper's page return 200, 200, and 404.
-- [ ] Search parses a sample Atom feed (titles, authors, year, abstract, links); empty and error entries are handled; an arXiv ID query uses `id_list`.
-- [ ] Simulated arXiv 429s trigger retries and end in the "arXiv is busy" message with status 503.
-- [ ] Save downloads a (fake) PDF and stores the paper; saving again is a no-op; a failed download returns 502 and stores nothing; a forged ID is rejected.
-- [ ] Upload of a text PDF stores it and redirects to the paper page; uploads of non-PDF, scanned, and oversized files show inline errors.
-- [ ] Upload metadata uses Gemini when available, then the PDF fields, then the first line.
-- [ ] Summary and Q&A run through the real `llm.py` against a fake `genai` client, with a Gemini 3 model getting `thinking_level=LOW` and a 2.5 model getting no thinking setting.
-- [ ] Missing key, 429 quota, 404 model, and 5xx errors each produce the right inline message, and nothing is stored.
-- [ ] Model Markdown renders, and raw `<script>` in model output is escaped.
-- [ ] Delete removes the row, its questions, and the PDF file.
-- [ ] The library survives a server restart.
-- [ ] Screenshots of the search, library, and paper pages in headless Chromium look right on desktop and phone widths.
+- [x] App imports and starts; `GET /`, `/library`, and a missing paper's page return 200, 200, and 404.
+- [x] Search parses a sample Atom feed (titles, authors, year, abstract, links); empty and error entries are handled; an arXiv ID query uses `id_list`.
+- [x] Simulated arXiv 429s trigger retries and end in the "arXiv is busy" message with status 503.
+- [x] Save downloads a (fake) PDF and stores the paper; saving again is a no-op; a failed download returns 502 and stores nothing; a forged ID is rejected.
+- [x] Upload of a text PDF stores it and redirects to the paper page; uploads of non-PDF, scanned, and oversized files show inline errors.
+- [x] Upload metadata uses Gemini when available, then the PDF fields, then the first line.
+- [x] Summary and Q&A run through the real `llm.py` against a fake `genai` client, with a Gemini 3 model getting `thinking_level=LOW` and a 2.5 model getting no thinking setting.
+- [x] Missing key, 429 quota, 404 model, and 5xx errors each produce the right inline message, and nothing is stored.
+- [x] Model Markdown renders, and raw `<script>` in model output is escaped.
+- [x] Delete removes the row, its questions, and the PDF file.
+- [x] The library survives a server restart.
+- [x] Screenshots of the search, library, and paper pages in headless Chromium look right on desktop and phone widths.
+
+**Result (2026-10-09):** all 114 scripted checks passed. A headless-Chromium walkthrough of every feature (search, save, upload, summarize, ask, inline errors, delete, phone width, dark mode) found no layout or console problems besides the deliberately triggered 400. These checks used fake arXiv and Gemini backends, so the first live run is still the real test of both integrations. The check scripts are not committed, so HW2's test suite starts from zero.
 
 ## After handover (student)
 
