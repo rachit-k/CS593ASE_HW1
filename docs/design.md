@@ -201,7 +201,8 @@ ai-research-assistant/
 │   ├── design.md          # this document
 │   └── plan.md            # implementation plan
 ├── .claude/
-│   └── settings.json      # Claude Code project settings (shared)
+│   ├── settings.json      # Claude Code project settings (shared)
+│   └── skills/run-app/    # Claude Code skill: run the app, drive it in headless Chrome
 ├── CLAUDE.md              # Claude Code project instructions
 ├── .env.example
 ├── .gitignore
@@ -226,6 +227,8 @@ The repo is prepared for later changes made with Claude Code.
 It mentions `docs/design.md` by path rather than importing it, so each session's context stays small.
 
 **`.claude/settings.json`** is committed and shared. It denies Claude Code's file tools read and edit access to `.env`. `.env.example` stays editable, so Claude Code can document new settings. Personal permission rules belong in `.claude/settings.local.json`, which is listed in `.gitignore`.
+
+**`.claude/skills/run-app/`** is a project skill, also committed and shared. It starts a throwaway copy of the app on port 8765 with a scratch data directory and an empty `GEMINI_API_KEY`, smoke-tests routes with curl, and drives the search page in headless Chrome with a bundled Playwright script. A session can therefore check a change in the real app without touching the user's server, library, or key.
 
 ## 13. Verification before handover
 

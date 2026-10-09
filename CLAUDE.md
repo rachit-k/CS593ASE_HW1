@@ -6,6 +6,7 @@ A local web app (CS59300 HW1) for searching arXiv, saving papers to a SQLite lib
 
 - Set up: `python -m venv .venv`, activate it, then `pip install -r requirements.txt`
 - Run: `uvicorn app.main:app --reload`, then open http://127.0.0.1:8000
+- Check a change in the real app: use the `run-app` skill (`.claude/skills/run-app/`). It runs a throwaway server on port 8765, because the user's own server is usually on 8000.
 - Settings live in `.env` (copied from `.env.example`): `GEMINI_API_KEY`, `GEMINI_MODEL`, `DATA_DIR`.
 - There is no test suite yet; HW2 adds one with pytest. Tests must never call the real arXiv or Gemini (see "Testing seams").
 

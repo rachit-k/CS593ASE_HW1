@@ -116,9 +116,10 @@ app/
 docs/
   design.md          design spec
   plan.md            implementation plan
-.claude/settings.json  Claude Code project settings
-CLAUDE.md              instructions for Claude Code
-.env.example           settings template (copy to .env)
+.claude/settings.json    Claude Code project settings
+.claude/skills/run-app/  Claude Code skill: run the app and drive it in a browser
+CLAUDE.md                instructions for Claude Code
+.env.example             settings template (copy to .env)
 requirements.txt
 ```
 
@@ -145,6 +146,7 @@ The repo is set up for [Claude Code](https://claude.com/claude-code):
 
 - `CLAUDE.md` is loaded automatically at the start of each session. It holds the commands, a code map, the rules a change must keep, the seams for faking arXiv and Gemini in tests, and known gotchas.
 - `.claude/settings.json` (shared, committed) stops Claude Code's file tools from reading or editing `.env`. Put personal settings in `.claude/settings.local.json`, which git ignores.
+- `.claude/skills/run-app/` (shared, committed) is a project skill. It starts a throwaway copy of the app on port 8765, with a scratch library and Gemini turned off, then drives the search page in headless Chrome and saves screenshots. Claude Code uses it when you ask it to run the app or check that a change works; you can also type `/run-app`. Your own server, library, and API key are left alone.
 
 ## How this was built
 
