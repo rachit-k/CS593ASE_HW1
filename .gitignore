@@ -1,0 +1,24 @@
+# Secrets
+.env
+
+# Your library: the SQLite database and saved PDFs
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Claude Code personal settings
+.claude/settings.local.json
+CLAUDE.local.md
+
+# OS and editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
