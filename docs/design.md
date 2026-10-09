@@ -1,6 +1,6 @@
 # AI Research Assistant — Design
 
-Status: draft for review · Date: 2026-10-05 · Context: CS59300-ASE Homework 1
+Status: approved 2026-10-09 (drafted 2026-10-05) · Context: CS59300-ASE Homework 1
 
 ## 1. Goal
 
@@ -22,7 +22,7 @@ Success means all five features work end to end in the demo video, someone can c
 
 ## 3. Architecture
 
-One FastAPI process serves HTML pages rendered with Jinja2. HTMX, vendored into `app/static/` rather than loaded from a CDN, handles partial updates: search results, the save button, the summary panel, Q&A answers, and deletions. Route handlers stay thin and delegate to modules that each own one concern.
+One FastAPI process serves HTML pages rendered with Jinja2. HTMX 2.0.11, vendored into `app/static/` rather than loaded from a CDN, handles partial updates: search results, the save button, the summary panel, Q&A answers, and deletions. Route handlers stay thin and delegate to modules that each own one concern.
 
 `app/arxiv_client.py` queries the arXiv API, retries when throttled, and parses the Atom feed into result objects. `app/pdfs.py` downloads PDFs, validates them, and extracts text with PyMuPDF. `app/llm.py` wraps the Gemini SDK in three functions: `extract_metadata(first_pages_text)`, `summarize(paper)`, and `answer(paper, question, history)`. `app/db.py` owns the SQLite schema and every query. `app/config.py` reads settings from the environment.
 
@@ -77,7 +77,11 @@ CREATE TABLE IF NOT EXISTS questions (
     answer      TEXT    NOT NULL,
     created_at  TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_questions_paper_id ON questions(paper_id);
 ```
+
+SQLite already indexes primary keys and the unique `arxiv_id`. The extra index covers the one other frequent lookup: loading a paper's Q&A history.
 
 The schema is created at startup if it is missing. Each operation opens its own connection with `PRAGMA foreign_keys = ON`, which is all a single-user local app needs. The arXiv ID is stored without its version suffix, so v1 and v2 of the same paper count as one.
 
@@ -97,7 +101,7 @@ The app calls Gemini through the official `google-genai` Python SDK. All three f
 
 ## 7. arXiv integration
 
-**Search.** Search calls `https://export.arxiv.org/api/query` with `sortBy=relevance`, `max_results=10`, and a descriptive User-Agent. The query requires every word the user typed to match somewhere in the record, using the `all:` field with terms joined by `AND`.
+**Search.** Search calls `https://export.arxiv.org/api/query` with `sortBy=relevance`, `max_results=10`, and a descriptive User-Agent. The query requires every word the user typed to match somewhere in the record, using the `all:` field with terms joined by `AND`. Characters that have meaning in arXiv's query syntax, such as quotes, parentheses, and colons, are stripped from the words first. If the whole query is an arXiv ID (for example `1706.03762` or `hep-th/9901001`), the client looks that paper up directly with `id_list` instead.
 
 **Retries.** The arXiv API has been throttling heavily during 2026, so the client retries on HTTP 429, 5xx responses, and timeouts. It makes up to 3 attempts, waiting 3 s and then 6 s, with a 15 s timeout per attempt. If every attempt fails, the page shows "arXiv is busy right now — try again in a few seconds."
 
@@ -116,8 +120,10 @@ Saving downloads the PDF with a 30 s timeout and a 50 MB cap, checks that the fi
 **Metadata fallback.** Upload metadata comes from the first source that works:
 
 1. Gemini extraction
-2. the title and author fields embedded in the PDF
+2. the title and author fields embedded in the PDF, when they look real (not empty, and not placeholders such as "untitled" or a `.docx` file name)
 3. the first non-empty line of text as the title, with no authors and no year
+
+When Gemini isn't used, the abstract comes from the text after an "Abstract" heading on the first pages, if there is one.
 
 An upload never fails because of metadata alone. That also means uploads keep working when no Gemini key is configured.
 
@@ -203,7 +209,7 @@ The repo is prepared for later changes made with Claude Code.
 
 It mentions `docs/design.md` by path rather than importing it, so each session's context stays small.
 
-**`.claude/settings.json`** is committed and shared. It denies Claude Code's file tools access to `.env` and `.env.*`. Personal permission rules belong in `.claude/settings.local.json`, which is listed in `.gitignore`.
+**`.claude/settings.json`** is committed and shared. It denies Claude Code's file tools read and edit access to `.env`. `.env.example` stays editable, so Claude Code can document new settings. Personal permission rules belong in `.claude/settings.local.json`, which is listed in `.gitignore`.
 
 ## 13. Verification before handover
 
