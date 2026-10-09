@@ -15,6 +15,7 @@ Success means all five features work end to end in the demo video, someone can c
 | Stack | FastAPI + Jinja2 templates + HTMX | All Python, one process, no Node or build step. Still a clear split: templates, HTMX, and CSS on the frontend; routes, services, and the database on the backend. |
 | LLM | Google Gemini API, free tier, default model `gemini-3.8-flash` | Free with no payment method; a 1M-token context window fits whole papers; the model name is configurable. |
 | Paper search | arXiv API | No key needed, and every result has a free PDF, which full-text summaries require. |
+| Citation counts | Semantic Scholar Graph API, batch endpoint, no key | arXiv has no citation data. One request covers a whole pool of results, and Semantic Scholar counts a preprint and its published version as one paper. |
 | Storage | SQLite through Python's built-in `sqlite3`; PDFs on disk | Zero setup, and data survives restarts. |
 | Summary and Q&A context | Whole paper in the prompt (no RAG) | A paper is roughly 10–30k tokens. Full context answers questions like "what are the limitations?" better than retrieved chunks. |
 | Deployment | Local only (`uvicorn`) | The student's choice; no Docker and no hosting. |
@@ -24,9 +25,9 @@ Success means all five features work end to end in the demo video, someone can c
 
 One FastAPI process serves HTML pages rendered with Jinja2. HTMX 2.0.11, vendored into `app/static/` rather than loaded from a CDN, handles partial updates: search results, the save button, the summary panel, Q&A answers, and deletions. Route handlers stay thin and delegate to modules that each own one concern.
 
-`app/arxiv_client.py` queries the arXiv API, retries when throttled, and parses the Atom feed into result objects. `app/pdfs.py` downloads PDFs, validates them, and extracts text with PyMuPDF. `app/llm.py` wraps the Gemini SDK in three functions: `extract_metadata(first_pages_text)`, `summarize(paper)`, and `answer(paper, question, history)`. `app/db.py` owns the SQLite schema and every query. `app/config.py` reads settings from the environment.
+`app/arxiv_client.py` queries the arXiv API, retries when throttled, and parses the Atom feed into result objects. `app/citations.py` looks up citation counts on Semantic Scholar for "most cited" searches. `app/pdfs.py` downloads PDFs, validates them, and extracts text with PyMuPDF. `app/llm.py` wraps the Gemini SDK in three functions: `extract_metadata(first_pages_text)`, `summarize(paper)`, and `answer(paper, question, history)`. `app/db.py` owns the SQLite schema and every query. `app/config.py` reads settings from the environment.
 
-Network calls happen only in `arxiv_client.py`, in the download function of `pdfs.py`, and in `llm.py`. That gives HW2 tests three clear seams to replace with fakes. The data directory comes from configuration, so tests can point it at a temporary folder.
+Network calls happen only in `arxiv_client.py`, `citations.py`, the download function of `pdfs.py`, and `llm.py`. That gives HW2 tests four clear seams to replace with fakes. The data directory comes from configuration, so tests can point it at a temporary folder.
 
 The three slow actions follow the same shape. **Save** takes the result's metadata from the submitted form, downloads the PDF, extracts its text, and inserts a row. **Upload** stores the file, extracts its text, asks Gemini for metadata from the first two pages, and inserts a row. **Summarize** and **Ask** load the stored full text, call Gemini, store the result, and render a partial.
 
@@ -36,7 +37,7 @@ The header links to two sections, Search and Library; each paper also has its ow
 
 | Method and path | Purpose | Response |
 |---|---|---|
-| `GET /` | Search page. With `?q=`, it runs the search. HTMX requests get only the results list; normal requests get the full page, so refresh and the back button work. | Page or results partial |
+| `GET /` | Search page. With `?q=`, it runs the search, in the order `&sort=` names: `relevance` (the default), `recent`, or `citations`. HTMX requests get only the results list; normal requests get the full page, so refresh and the back button work. | Page or results partial |
 | `POST /library` | Save an arXiv result, using the metadata fields from its card | Updated button: "In library · Open" |
 | `GET /library` | Saved papers, newest first, plus the PDF upload form | Page |
 | `POST /library/upload` | Upload a PDF (multipart form) | `HX-Redirect` to the new paper's page |
@@ -46,9 +47,11 @@ The header links to two sections, Search and Library; each paper also has its ow
 | `POST /papers/{id}/summary` | Generate the summary, or regenerate it | Summary partial |
 | `POST /papers/{id}/questions` | Ask a question | New Q&A item, appended to the list |
 
-Search shows up to 10 results sorted by relevance. Each card shows the title (linked to the arXiv abstract page), authors, year, and abstract (collapsed after a few lines), with a Save button. Papers already in the library show "In library · Open" instead. Deletion happens from the library list and asks for confirmation first.
+Search shows up to 20 results. A Sort menu next to the search box picks the order: arXiv rank (relevance), most recent, or most cited. Changing it re-runs the search. Each card shows the title (linked to the arXiv abstract page), authors, year, and abstract (collapsed after a few lines), with a Save button. When sorted by most recent, the card also shows the paper's submission date; when sorted by most cited, it shows the citation count. Papers already in the library show "In library · Open" instead. Deletion happens from the library list and asks for confirmation first.
 
 The paper page shows the stored summary if one exists, otherwise a Summarize button. The Q&A panel lists earlier questions and offers one-click starter questions based on the assignment's examples: the problem addressed, the main idea, the datasets, the limitations, and the comparison with baselines.
+
+htmx saves each page for the back button as HTML, which keeps attributes but not what was typed or picked since. So when new results arrive, a small script in `base.html` copies the search form's current query and sort into its attributes. A page restored from history then shows the query and sort that produced its results.
 
 Gemini returns Markdown, which the server renders to HTML with raw HTML disabled, so model output can't inject markup into the page.
 
@@ -103,11 +106,19 @@ The app calls Gemini through the official `google-genai` Python SDK. All three f
 
 ## 7. arXiv integration
 
-**Search.** Search calls `https://export.arxiv.org/api/query` with `sortBy=relevance`, `max_results=10`, and a descriptive User-Agent. The query requires every word the user typed to match somewhere in the record, using the `all:` field with terms joined by `AND`. Characters that have meaning in arXiv's query syntax, such as quotes, parentheses, and colons, are stripped from the words first; apostrophes inside a word stay, because arXiv indexes "don't" as one word. Common English words are skipped: arXiv leaves Lucene's 33 standard stop words ("a", "the", "of", and so on) out of its title and abstract index, but not out of author names, where "A" can be an initial. Requiring `all:a` would therefore drop every paper without such an author, even one whose title starts with "A". If the whole query is an arXiv ID (for example `1706.03762` or `hep-th/9901001`), the client looks that paper up directly with `id_list` instead.
+**Search.** Search calls `https://export.arxiv.org/api/query` with `max_results=20`, a descriptive User-Agent, and a `sortBy` that follows the Sort menu. That is `relevance` for arXiv rank, or `submittedDate` for most recent (the first version's date, newest first). The query requires every word the user typed to match somewhere in the record, using the `all:` field with terms joined by `AND`. Characters that have meaning in arXiv's query syntax, such as quotes, parentheses, and colons, are stripped from the words first; apostrophes inside a word stay, because arXiv indexes "don't" as one word. Common English words are skipped: arXiv leaves Lucene's 33 standard stop words ("a", "the", "of", and so on) out of its title and abstract index, but not out of author names, where "A" can be an initial. Requiring `all:a` would therefore drop every paper without such an author, even one whose title starts with "A". If the whole query is an arXiv ID (for example `1706.03762` or `hep-th/9901001`), the client looks that paper up directly with `id_list` instead.
 
 **Retries.** The arXiv API has been throttling heavily during 2026, so the client retries on HTTP 429, 5xx responses, and timeouts. It makes up to 3 attempts, waiting 3 s and then 6 s, with a 15 s timeout per attempt. If every attempt fails, the page shows "arXiv is busy right now — try again in a few seconds."
 
-**Result fields.** The year comes from the `published` date of the first version. The abstract page link and the PDF link are built from the arXiv ID.
+**Most cited.** arXiv has no citation data and can't sort by it. A most-cited search therefore asks arXiv for its 100 best matches, which is still a single arXiv request. `app/citations.py` then sends all 100 IDs to Semantic Scholar's batch endpoint (`POST https://api.semanticscholar.org/graph/v1/paper/batch?fields=citationCount`, with IDs written as `ARXIV:<id>`). The endpoint needs no key and returns one entry per ID, or `null` for a paper it doesn't know. The page shows the 20 most cited. Unknown papers go last, and ties keep arXiv's order.
+
+The pool size is a trade-off, measured on "code review automation":
+- **100 candidates:** the search takes about 1 s, and the most-cited result (arXiv rank 26) is on topic.
+- **300 candidates:** it takes about 3 s, and the most-cited paper sits at arXiv rank 296. That paper is heavily cited but only mentions the search words in passing.
+
+Semantic Scholar requests are retried on HTTP 429, 5xx responses, and timeouts: up to 3 attempts, waiting 1 s and then 3 s. If they still fail, the page shows an error rather than results in some other order.
+
+**Result fields.** The year comes from the `published` date of the first version, and so does the submission date shown when sorting by most recent. The abstract page link and the PDF link are built from the arXiv ID.
 
 **Saving.** The card submits the result's metadata along with its arXiv ID, so saving never needs a second arXiv API call. The server checks the ID against arXiv's ID formats and builds the abstract and PDF links from it, rather than accepting links from the form. That way the server only ever downloads from arxiv.org.
 
@@ -136,6 +147,7 @@ An upload never fails because of metadata alone. That also means uploads keep wo
 | Empty search box | No request is sent; the page prompts for a query |
 | No results | "No papers found" |
 | arXiv still failing after retries | Inline "arXiv is busy" message (HTTP 503) |
+| Semantic Scholar still failing after retries (most cited only) | Inline "Semantic Scholar is busy" message (HTTP 503) that suggests another sort |
 | PDF download fails while saving | Inline error on that card; nothing saved (HTTP 502) |
 | Non-PDF, too large, corrupt, or scanned upload | Inline error on the upload form (HTTP 400 or 413) |
 | `GEMINI_API_KEY` missing | Summary and Q&A panels explain how to set it; search, save, upload, and browsing keep working |
@@ -179,6 +191,7 @@ ai-research-assistant/
 │   ├── main.py            # FastAPI app and routes
 │   ├── config.py          # settings from the environment
 │   ├── arxiv_client.py    # arXiv search, retries, Atom parsing
+│   ├── citations.py       # Semantic Scholar citation counts
 │   ├── pdfs.py            # PDF download, validation, text extraction
 │   ├── llm.py             # Gemini: metadata, summary, Q&A
 │   ├── db.py              # SQLite schema and queries
@@ -206,7 +219,7 @@ The repo is prepared for later changes made with Claude Code.
 
 - a one-paragraph project summary and the run commands
 - the module map from section 3
-- the design invariants: every library paper has full text; network calls live only in `arxiv_client.py`, `pdfs.py`, and `llm.py`; routes stay thin
+- the design invariants: every library paper has full text; network calls live only in `arxiv_client.py`, `citations.py`, `pdfs.py`, and `llm.py`; routes stay thin
 - conventions: keep dependencies minimal, add no frontend build step, and update this document and the README when behavior changes
 - known gotchas: arXiv throttling, Gemini free-tier quotas, and never reading or printing `.env`
 
@@ -246,5 +259,7 @@ The following are left out on purpose:
 ## 15. Risks
 
 **arXiv throttling** could make search slow or briefly unavailable during the demo. Retries soften this, and uploading a PDF doesn't depend on arXiv at all.
+
+**Semantic Scholar's shared rate limit** covers everyone who calls it without a key, so most-cited lookups can be refused at busy times. Retries soften this, and the other two sorts don't use it.
 
 **Gemini free-tier quotas** are unpublished and set per model. A configurable model name and clear error messages handle this. Gemini 3.8 Flash only reached general availability in September 2026, so if its free quota turns out to be tight, a Flash-Lite model is the fallback.

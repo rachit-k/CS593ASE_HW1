@@ -4,11 +4,16 @@
 <section class="intro">
   <h1>Find papers on arXiv</h1>
   <form class="search-form" action="/" method="get" role="search"
-        hx-get="/" hx-target="#results" hx-push-url="true"
+        hx-get="/" hx-target="#results" hx-push-url="true" hx-trigger="submit, change from:find select"
         hx-indicator="#search-working" hx-disabled-elt="find button">
     <input type="search" name="q" value="{{ q }}" required maxlength="300"
            placeholder="A topic, some keywords, or an arXiv ID"
            aria-label="Search arXiv"{% if not q %} autofocus{% endif %}>
+    <select name="sort" aria-label="Sort results">
+      {% for value, label in sort_options.items() %}
+      <option value="{{ value }}"{% if value == sort %} selected{% endif %}>Sort: {{ label }}</option>
+      {% endfor %}
+    </select>
     <button type="submit">Search</button>
   </form>
   <p class="hint">Results include every word you type except common ones like “the”. Paste an arXiv ID or link to go straight to that paper.</p>

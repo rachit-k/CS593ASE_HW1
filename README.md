@@ -6,7 +6,7 @@ Built for CS59300 AI-Assisted Software Engineering (Purdue), Homework 1.
 
 ## Features
 
-1. **Search arXiv** by topic, keywords, or arXiv ID. Each result shows the title, authors, year, abstract, and a link to the paper.
+1. **Search arXiv** by topic, keywords, or arXiv ID. You get up to 20 results, sorted by arXiv's ranking, most recent first, or most cited first (citation counts come from Semantic Scholar). Each result shows the title, authors, year, abstract, and a link to the paper.
 2. **Save papers** to a local SQLite library. Saving downloads the paper's PDF and extracts its text. The library survives restarts.
 3. **Upload PDFs.** The app extracts the text, and Gemini reads the title, authors, year, and abstract from the first pages, so uploads look like saved search results.
 4. **Summarize a paper.** Gemini reads the whole paper and writes a TL;DR plus the problem, the approach, the key results, and the limitations. Summaries are stored, and you can regenerate them.
@@ -53,7 +53,10 @@ Open http://127.0.0.1:8000. Stop the server with Ctrl+C. Your library is kept in
 
 ## Using the app
 
-1. **Search.** Type a topic, for example `code review automation`, and press Search. Every word you type must appear in a paper's record, except common words such as "a", "the", and "of", which arXiv doesn't index. Pasting an arXiv ID or link (for example `1706.03762`) goes straight to that paper.
+1. **Search.** Type a topic, for example `code review automation`, and press Search. Every word you type must appear in a paper's record, except common words such as "a", "the", and "of", which arXiv doesn't index. Pasting an arXiv ID or link (for example `1706.03762`) goes straight to that paper. The **Sort** menu next to the box re-runs the search in another order:
+   - **arXiv rank**: arXiv's best matches first.
+   - **most recent**: the newest matching papers, each with its submission date.
+   - **most cited**: arXiv's 100 best matches, sorted by their citation counts on Semantic Scholar.
 2. **Save.** Click **Save to library** on a result. The app downloads the PDF from arXiv, which takes a few seconds, and the button changes to **Open**.
 3. **Upload.** On the **Library** page, choose a PDF under **Add a PDF** and click **Upload PDF**. You'll land on the new paper's page.
 4. **Summarize.** On a paper's page, click **Summarize paper**. It usually takes 5 to 30 seconds.
@@ -83,12 +86,14 @@ Browser (HTML + HTMX)
         ▼
 app/main.py ── routes: check input, call a module, render a template
    ├── app/arxiv_client.py   arXiv search API (Atom feed), retries when arXiv is busy
+   ├── app/citations.py      citation counts from Semantic Scholar, for "most cited"
    ├── app/pdfs.py           PDF download from arxiv.org, upload checks, text extraction (PyMuPDF)
    ├── app/llm.py            Gemini via google-genai: metadata, summaries, Q&A
    └── app/db.py             SQLite: papers and questions
 ```
 
 - **Search** calls the arXiv API, which needs no key. arXiv limits automated traffic, so a busy response is retried twice, after 3 and 6 seconds.
+- **Most cited** needs data arXiv doesn't have. The app asks arXiv for its 100 best matches, looks up all of them in one request to Semantic Scholar's free API (no key needed), and shows the 20 most cited. Ranking only arXiv's best matches keeps the results on topic. Ranking more pulls in famous papers that merely mention your words, and makes the search slower.
 - **Saving** downloads the PDF from arxiv.org and stores its full text in the database. Every paper in the library has its full text, which is what summaries and answers are based on.
 - **Uploads** are checked (PDF, at most 50 MB, has selectable text). Gemini then reads the title, authors, year, and abstract from the first two pages. If Gemini isn't available, the app falls back to the PDF's own metadata and the text after an "Abstract" heading.
 - **Summaries and answers** send the paper's full text to Gemini, with no retrieval step: a typical paper is 10–30k tokens, far below the model's 1M-token context window. Very long documents are cut at 400,000 characters. Model output is rendered as Markdown with raw HTML disabled.
@@ -102,6 +107,7 @@ app/
   main.py            FastAPI app and routes
   config.py          settings from .env
   arxiv_client.py    arXiv search, retries, Atom parsing
+  citations.py       Semantic Scholar citation counts
   pdfs.py            PDF download, validation, text extraction
   llm.py             Gemini: metadata, summary, Q&A
   db.py              SQLite schema and queries
@@ -122,6 +128,7 @@ requirements.txt
 |---|---|
 | "arXiv is busy right now" | arXiv is throttling requests. Wait a few seconds and search again. |
 | "Couldn't download the PDF from arXiv" | Same cause; try saving again in a moment. |
+| "Semantic Scholar is busy" | Its free API is shared by everyone without a key. Try again in a few seconds, or sort by arXiv rank or most recent, which don't use it. |
 | "No Gemini API key is set" | Add `GEMINI_API_KEY` to `.env` and restart the app. |
 | "Gemini's free-tier quota … is used up" | Wait a minute. If it persists, today's quota for that model is spent: set `GEMINI_MODEL` to another free model and restart. Your limits are shown in Google AI Studio. |
 | "Gemini rejected the API key" | Check the key in `.env` for typos or extra spaces. |
@@ -130,7 +137,7 @@ requirements.txt
 
 ## Privacy
 
-Everything you save stays on your computer in `data/`. The paper's text is sent to Google's Gemini API when you upload a PDF, summarize, or ask a question. On Gemini's free tier, Google may use what you send to improve its products, so stick to published papers and don't upload anything confidential.
+Everything you save stays on your computer in `data/`. Searches go to arXiv, and a "most cited" search also sends the arXiv IDs of the matching papers (not your search words) to Semantic Scholar. The paper's text is sent to Google's Gemini API when you upload a PDF, summarize, or ask a question. On Gemini's free tier, Google may use what you send to improve its products, so stick to published papers and don't upload anything confidential.
 
 ## Developing with Claude Code
 

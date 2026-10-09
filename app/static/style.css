@@ -288,10 +288,22 @@ input[type="text"] {
 }
 
 input[type="search"]:focus,
-input[type="text"]:focus {
+input[type="text"]:focus,
+select:focus {
   outline: 2px solid var(--pen);
   outline-offset: 0;
   border-color: var(--pen);
+}
+
+select {
+  appearance: none;
+  padding: 0.6rem 2.1rem 0.6rem 0.85rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%236f7883' stroke-width='1.6'/%3E%3C/svg%3E") no-repeat right 0.8rem center / 0.7rem;
+  color: var(--ink);
+  font: 500 0.95rem/1.2 var(--sans);
+  cursor: pointer;
 }
 
 input[type="file"] {
@@ -322,12 +334,15 @@ fieldset {
 
 .search-form {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: 1.4rem;
   max-width: 46rem;
 }
 
+/* On narrow screens the box gets its own row, with the sort menu and button below. */
 .search-form input {
+  flex: 1 1 18rem;
   font-size: 1.15rem;
   padding: 0.75rem 0.9rem;
 }
@@ -749,5 +764,9 @@ ol:not(:has(> li)) + .empty-note {
   .search-form button,
   .ask-form button {
     flex: none;
+  }
+
+  .search-form select {
+    flex: 1;
   }
 }

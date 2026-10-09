@@ -28,11 +28,13 @@ from markdown_it import MarkdownIt
 from markupsafe import Markup
 from starlette.exceptions import HTTPException
 
-from app import arxiv_client, config, db, llm, pdfs
+from app import arxiv_client, citations, config, db, llm, pdfs
 
 APP_DIR = Path(__file__).resolve().parent
 log = logging.getLogger("app")
 
+# The search page's sort menu: ?sort= value -> label after "Sort: ".
+SORT_OPTIONS = {"relevance": "arXiv rank", "recent": "most recent", "citations": "most cited"}
 MAX_QUESTION_CHARS = 1_000
 STARTER_QUESTIONS = [
     "What problem does this paper address?",
@@ -118,16 +120,34 @@ def get_paper_or_404(paper_id: int) -> dict[str, Any]:
 
 
 @app.get("/", response_class=HTMLResponse)
-def search_page(request: Request, q: str = "") -> HTMLResponse:
+def search_page(request: Request, q: str = "", sort: str = "relevance") -> HTMLResponse:
     q = q.strip()[:300]
-    context: dict[str, Any] = {"active": "search", "q": q, "results": None, "error": None, "in_library": {}}
+    sort = sort if sort in SORT_OPTIONS else "relevance"
+    context: dict[str, Any] = {
+        "active": "search",
+        "q": q,
+        "sort": sort,
+        "sort_options": SORT_OPTIONS,
+        "results": None,
+        "error": None,
+        "in_library": {},
+        "citation_counts": {},
+        "pool_size": citations.POOL_SIZE,
+        "pool_full": False,
+    }
     status_code = 200
     if q:
         try:
-            results = arxiv_client.search(q)
+            if sort == "citations":
+                # arXiv can't sort by citations, so rank its best matches by Semantic Scholar's counts.
+                pool = arxiv_client.search(q, max_results=citations.POOL_SIZE)
+                results, context["citation_counts"] = citations.most_cited(pool, arxiv_client.MAX_RESULTS)
+                context["pool_full"] = len(pool) == citations.POOL_SIZE
+            else:
+                results = arxiv_client.search(q, sort=sort)
             context["results"] = results
             context["in_library"] = db.library_ids_for([r.arxiv_id for r in results])
-        except arxiv_client.ArxivError as exc:
+        except (arxiv_client.ArxivError, citations.CitationError) as exc:
             context["error"], status_code = str(exc), exc.status_code
         except ValueError as exc:  # nothing searchable was left after cleaning the query
             context["error"], status_code = str(exc), 400

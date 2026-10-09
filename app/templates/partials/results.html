@@ -2,7 +2,13 @@
   {% with message=error, kind="error" %}{% include "partials/alert.html" %}{% endwith %}
 {% elif results is not none %}
   {% if results %}
-  <p class="results-count">{{ results|length }} {{ "paper" if results|length == 1 else "papers" }} for “{{ q }}”, best match first</p>
+  {% if sort == "citations" %}
+  <p class="results-count">
+    {% if pool_full %}{{ results|length }} of arXiv's {{ pool_size }} best matches for “{{ q }}”{% else %}{{ results|length }} {{ "paper" if results|length == 1 else "papers" }} for “{{ q }}”{% endif %}, most cited first. Citation counts from <a href="https://www.semanticscholar.org" target="_blank" rel="noopener">Semantic Scholar</a>.
+  </p>
+  {% else %}
+  <p class="results-count">{{ results|length }} {{ "paper" if results|length == 1 else "papers" }} for “{{ q }}”, {{ "newest" if sort == "recent" else "best match" }} first</p>
+  {% endif %}
   <ol class="entries">
     {% for r in results %}
     <li class="entry">
@@ -10,6 +16,12 @@
       <div class="entry-body">
         <h2 class="entry-title"><a href="{{ r.url }}" target="_blank" rel="noopener">{{ r.title }}</a></h2>
         <p class="authors">{{ r.authors|author_list }}</p>
+        {% if sort == "citations" %}
+        {% set cites = citation_counts.get(r.arxiv_id) %}
+        <p class="facts"><span>{% if cites is none %}Citation count unknown{% else %}{{ "{:,}".format(cites) }} {{ "citation" if cites == 1 else "citations" }}{% endif %}</span></p>
+        {% elif sort == "recent" and r.published %}
+        <p class="facts"><span>Submitted {{ r.published.day }} {{ r.published.strftime("%b %Y") }}</span></p>
+        {% endif %}
         {% if r.abstract %}
         <p class="abstract{% if r.abstract|length > 360 %} clamped{% endif %}" id="abstract-{{ loop.index }}">{{ r.abstract }}</p>
         {% if r.abstract|length > 360 %}

@@ -10,14 +10,17 @@ import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import date
 
 import feedparser
 import httpx
 
 API_URL = "https://export.arxiv.org/api/query"
 USER_AGENT = "AI-Research-Assistant/1.0 (local student project)"
-MAX_RESULTS = 10
+MAX_RESULTS = 20
 MAX_QUERY_WORDS = 12
+# The orders arXiv can sort by itself; submittedDate is the date of a paper's first version.
+SORT_BY = {"relevance": "relevance", "recent": "submittedDate"}
 # arXiv leaves these common words (Lucene's standard English stop words) out of its
 # title and abstract index, so a query that requires one of them misses most papers.
 STOP_WORDS = frozenset(
@@ -58,6 +61,7 @@ class ArxivResult:
     abstract: str
     url: str  # abstract page
     pdf_url: str
+    published: date | None = None  # first version
 
 
 def normalize_id(raw: str) -> str | None:
@@ -79,12 +83,15 @@ def pdf_url(arxiv_id: str) -> str:
     return f"https://arxiv.org/pdf/{arxiv_id}"
 
 
-def build_params(query: str) -> dict[str, str | int]:
+def build_params(
+    query: str, *, sort: str = "relevance", max_results: int = MAX_RESULTS
+) -> dict[str, str | int]:
     """Turn what the user typed into arXiv API query parameters.
 
     An arXiv ID is looked up directly. Otherwise every word except STOP_WORDS must
-    match somewhere in the record (`all:` field, joined with AND). Raises ValueError
-    if nothing searchable is left.
+    match somewhere in the record (`all:` field, joined with AND), and results come
+    in the `sort` order (a key of SORT_BY). Raises ValueError if nothing searchable
+    is left.
     """
     arxiv_id = normalize_id(query)
     if arxiv_id:
@@ -97,16 +104,22 @@ def build_params(query: str) -> dict[str, str | int]:
         raise ValueError("Type a topic or some keywords to search.")
     return {
         "search_query": " AND ".join(f"all:{word}" for word in words),
-        "sortBy": "relevance",
+        "sortBy": SORT_BY[sort],
         "sortOrder": "descending",
         "start": 0,
-        "max_results": MAX_RESULTS,
+        "max_results": max_results,
     }
 
 
-def search(query: str, *, sleep: Callable[[float], None] = time.sleep) -> list[ArxivResult]:
-    """Search arXiv and return up to MAX_RESULTS results, best match first."""
-    params = build_params(query)
+def search(
+    query: str,
+    *,
+    sort: str = "relevance",
+    max_results: int = MAX_RESULTS,
+    sleep: Callable[[float], None] = time.sleep,
+) -> list[ArxivResult]:
+    """Search arXiv and return up to `max_results` results, best match or newest first."""
+    params = build_params(query, sort=sort, max_results=max_results)
     with httpx.Client(
         transport=TRANSPORT,
         timeout=TIMEOUT_SECONDS,
@@ -170,6 +183,7 @@ def parse_feed(feed_text: str) -> list[ArxivResult]:
                 abstract=_clean(entry.get("summary", "")),
                 url=abs_url(arxiv_id),
                 pdf_url=pdf_url(arxiv_id),
+                published=date(*published[:3]) if published else None,
             )
         )
     return results

@@ -16,6 +16,16 @@
       button.setAttribute("aria-expanded", String(expanded));
       button.textContent = expanded ? "Show less" : "Show full abstract";
     }
+
+    // htmx saves each page for the back button as HTML, which keeps attributes but not what
+    // was typed or picked since. When new results arrive, copy the search form's values into
+    // its attributes, so a restored page shows the query and sort behind its results.
+    document.addEventListener("htmx:afterSettle", (event) => {
+      const form = document.querySelector(".search-form");
+      if (!form || event.target.id !== "results") return;
+      form.elements.q.setAttribute("value", form.elements.q.value);
+      for (const option of form.elements.sort.options) option.toggleAttribute("selected", option.selected);
+    });
   </script>
 </head>
 <body>
