@@ -1,7 +1,5 @@
 # AI Research Assistant — Design
 
-Status: approved 2026-10-09 (drafted 2026-10-05) · Context: CS59300-ASE Homework 1
-
 ## 1. Goal
 
 A small local web app that helps a researcher find, collect, and understand papers. It supports the five HW1 features: search papers through a public API, save them to a persistent local library, upload PDFs with automatic metadata extraction, summarize a paper from its full text with an LLM, and answer natural-language questions about a paper.

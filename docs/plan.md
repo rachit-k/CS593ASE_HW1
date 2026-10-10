@@ -1,9 +1,5 @@
 # AI Research Assistant — Implementation Plan
 
-Date: 2026-10-09 · Implements: `docs/design.md` · Deadline: HW1 due 2026-10-10, 11:59 PM
-
-Because of the deadline, the student approved building straight through from this plan without a separate plan review.
-
 ## Build order
 
 Each step ends with a commit.
@@ -38,12 +34,3 @@ The sandbox can't reach arXiv or Gemini, so network calls are replaced with fake
 - [x] Delete removes the row, its questions, and the PDF file.
 - [x] The library survives a server restart.
 - [x] Screenshots of the search, library, and paper pages in headless Chromium look right on desktop and phone widths.
-
-**Result (2026-10-09):** all 114 scripted checks passed. A headless-Chromium walkthrough of every feature (search, save, upload, summarize, ask, inline errors, delete, phone width, dark mode) found no layout or console problems besides the deliberately triggered 400. These checks used fake arXiv and Gemini backends, so the first live run is still the real test of both integrations. The check scripts are not committed, so HW2's test suite starts from zero.
-
-## After handover (student)
-
-1. Unzip, create a GitHub repo, add it as `origin`, and push.
-2. Create a virtual environment, install `requirements.txt`, copy `.env.example` to `.env`, and add a Gemini key from Google AI Studio.
-3. Run `uvicorn app.main:app --reload`, then try search, save, upload, summarize, and ask live. The first live run may surface arXiv or Gemini differences that the fakes couldn't catch.
-4. Record the demo video and write the reflection.
