@@ -36,6 +36,9 @@ log = logging.getLogger("app")
 # The search page's sort menu: ?sort= value -> label after "Sort: ".
 SORT_OPTIONS = {"relevance": "arXiv rank", "recent": "most recent", "citations": "most cited"}
 MAX_QUESTION_CHARS = 1_000
+MAX_TITLE_CHARS = 500
+MAX_ABSTRACT_CHARS = 10_000
+DELETED_WHILE_WORKING = "That paper was deleted while Gemini was reading it."
 STARTER_QUESTIONS = [
     "What problem does this paper address?",
     "What is the main idea of the proposed approach?",
@@ -58,8 +61,9 @@ templates = Jinja2Templates(directory=APP_DIR / "templates")
 
 # --- Template helpers --------------------------------------------------------------
 
-# Model output is Markdown. Raw HTML inside it is escaped, never rendered.
-_markdown = MarkdownIt("commonmark", {"html": False}).enable("table")
+# Model output is Markdown. Raw HTML inside it is escaped, never rendered. Images are off too:
+# a paper could get Gemini to write one, and the browser would then call any address it names.
+_markdown = MarkdownIt("commonmark", {"html": False}).enable("table").disable("image")
 
 
 def render_markdown(text: str | None) -> Markup:
@@ -161,16 +165,17 @@ def search_page(request: Request, q: str = "", sort: str = "relevance") -> HTMLR
 def _parse_authors(raw: str) -> list[str]:
     try:
         value = json.loads(raw)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, RecursionError):  # very deep nesting raises RecursionError on older Pythons
         return []
     if not isinstance(value, list):
         return []
-    return [" ".join(str(name).split()) for name in value if str(name).strip()][:200]
+    return [" ".join(name.split()) for name in value if isinstance(name, str) and name.strip()][:200]
 
 
 def _parse_year(raw: str) -> int | None:
     raw = raw.strip()
-    return int(raw) if raw.isdigit() and 1900 <= int(raw) <= 2100 else None
+    # isdecimal, because int() can't read every "digit": "²".isdigit() is true.
+    return int(raw) if len(raw) == 4 and raw.isdecimal() and 1900 <= int(raw) <= 2100 else None
 
 
 @app.post("/library", response_class=HTMLResponse)
@@ -184,15 +189,16 @@ def save_paper(
 ) -> HTMLResponse:
     """Save an arXiv search result: download its PDF, extract the text, store it."""
     clean_id = arxiv_client.normalize_id(arxiv_id)
-    # Links are rebuilt from the validated ID; only the descriptive fields come from the form.
+    # Only the descriptive fields come from the form. The save slot links nowhere, and the paper's
+    # own link is rebuilt from the validated ID when it's stored.
     result = arxiv_client.ArxivResult(
         arxiv_id=clean_id or arxiv_id.strip()[:40],
-        title=" ".join(title.split())[:500],
+        title=" ".join(title.split())[:MAX_TITLE_CHARS],
         authors=_parse_authors(authors),
         year=_parse_year(year),
-        abstract=" ".join(abstract.split())[:10_000],
-        url=arxiv_client.abs_url(clean_id or ""),
-        pdf_url=arxiv_client.pdf_url(clean_id or ""),
+        abstract=" ".join(abstract.split())[:MAX_ABSTRACT_CHARS],
+        url="",
+        pdf_url="",
     )
 
     def slot(status_code: int = 200, **extra: Any) -> HTMLResponse:
@@ -227,6 +233,9 @@ def save_paper(
         # A parallel request (a double click) saved it first; keep that copy.
         pdfs.delete_pdf(file_name)
         paper_id = db.find_by_arxiv_id(clean_id)
+    except Exception:
+        pdfs.delete_pdf(file_name)
+        raise
     return slot(paper_id=paper_id, saved_now=True)
 
 
@@ -282,10 +291,10 @@ def upload_paper(
     try:
         paper_id = db.add_paper(
             source="upload",
-            title=meta["title"],
+            title=meta["title"][:MAX_TITLE_CHARS],
             authors=meta["authors"],
             year=meta["year"],
-            abstract=meta["abstract"],
+            abstract=(meta["abstract"] or "")[:MAX_ABSTRACT_CHARS] or None,
             url=None,
             pdf_path=file_name,
             full_text=extracted.full_text,
@@ -356,7 +365,8 @@ def summarize_paper(request: Request, paper_id: int) -> HTMLResponse:
         result = llm.summarize(paper)
     except llm.LLMError as exc:
         return render(request, "partials/summary.html", status_code=exc.status_code, paper=paper, error=str(exc))
-    db.set_summary(paper_id, result.text)
+    if not db.set_summary(paper_id, result.text):
+        raise HTTPException(404, DELETED_WHILE_WORKING)
     paper["summary"] = result.text
     return render(request, "partials/summary.html", paper=paper)
 
@@ -388,7 +398,10 @@ def ask_question(
         result = llm.answer(paper, question, db.list_questions(paper_id))
     except llm.LLMError as exc:
         return error(str(exc), exc.status_code)
-    item = db.add_question(paper_id, question, result.text)
+    try:
+        item = db.add_question(paper_id, question, result.text)
+    except sqlite3.IntegrityError:
+        return error(DELETED_WHILE_WORKING, 404)
     return render(request, "partials/qa_item.html", item=item, clear_error=True)
 
 

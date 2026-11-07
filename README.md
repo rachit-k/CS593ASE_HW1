@@ -53,6 +53,25 @@ Open http://127.0.0.1:8000. Stop the server with Ctrl+C. Your library is kept in
 
 To remove a paper, click **Delete** next to it in the library. This also deletes its PDF and its questions.
 
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest                                                                         # everything
+pytest --cov=app --cov-branch --cov-report=term-missing --cov-fail-under=100   # coverage, which should stay at 100%
+pytest -m "not browser"                                                        # without the browser tests
+```
+
+The tests use temporary folders and fake versions of arXiv, Semantic Scholar, and Gemini, so they need no API key or network connection and never touch your library. The browser tests drive your installed Google Chrome, and are skipped if it isn't there.
+
+Three more checks go beyond coverage. Each one leaves your files alone:
+
+```bash
+python tools/path_coverage.py                               # conditions, and/or operands, and template branches
+python tools/mutation_test.py                               # small code changes that no test notices (about half an hour)
+HYPOTHESIS_PROFILE=thorough pytest tests/test_properties.py # the property tests with 2,000 random inputs each
+```
+
 ## Project structure
 
 ```
@@ -69,8 +88,20 @@ app/
 docs/
   design.md          design 
   plan.md            implementation plan
+tests/
+  conftest.py        shared setup: temp library, fakes, no real network
+  helpers.py         builders for PDFs and feeds, and an HTML reader
+  recordings/        real API responses and real papers that the tests replay
+  test_*.py          one file per module, plus routes, errors, and whole journeys, and one
+                     per testing strategy (limits, decision tables, fault injection, properties,
+                     metamorphic, stateful, security, concurrency, real papers, contracts, markup, browser)
+tools/
+  path_coverage.py   measures conditions, and/or operands, and template branches
+  mutation_test.py   makes small changes to the code and reports the ones no test notices
 .claude/settings.json    Claude Code project settings
 CLAUDE.md                instructions for Claude Code
 .env.example             settings template (copy to .env)
+pytest.ini               test configuration
 requirements.txt
+requirements-dev.txt     test dependencies
 ```

@@ -80,7 +80,7 @@ def _post_with_retries(
         except httpx.TimeoutException:
             problem = "timed out"
             continue
-        except httpx.TransportError:
+        except httpx.HTTPError:
             problem = "couldn't connect"
             continue
         if response.status_code == 200:

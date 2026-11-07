@@ -26,7 +26,7 @@ REQUEST_TIMEOUT_MS = 120_000
 class LLMError(Exception):
     """Talking to Gemini failed. The message is written for the user."""
 
-    def __init__(self, message: str, status_code: int = 502):
+    def __init__(self, message: str, status_code: int):
         super().__init__(message)
         self.status_code = status_code
 
@@ -101,6 +101,8 @@ def _generate(contents: str, *, system: str, schema: type[BaseModel] | None = No
         raise LLMError(
             "Couldn't reach Gemini. Check your internet connection and try again.", 502
         ) from exc
+    except Exception as exc:  # the SDK raises several types for a reply it can't parse
+        raise LLMError("Gemini sent a reply the app couldn't read. Try again.", 502) from exc
 
 
 def _friendly_error(exc: errors.APIError, model: str) -> LLMError:
@@ -129,7 +131,7 @@ def _response_text(response: Any) -> str:
     reason = None
     if getattr(response, "prompt_feedback", None) and response.prompt_feedback.block_reason:
         reason = response.prompt_feedback.block_reason
-    elif response.candidates and response.candidates[0].finish_reason:
+    elif response.candidates:
         reason = response.candidates[0].finish_reason
     reason_text = f" (reason: {getattr(reason, 'value', reason)})" if reason else ""
     raise LLMError(f"Gemini returned an empty answer{reason_text}. Try again or rephrase.", 502)

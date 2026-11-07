@@ -1,0 +1,6 @@
+# Test tools, on top of the app's own dependencies. Install with: pip install -r requirements-dev.txt
+-r requirements.txt
+pytest~=9.2
+pytest-cov~=7.1
+hypothesis~=6.170
+playwright~=1.64

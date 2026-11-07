@@ -48,6 +48,9 @@ _LIST_COLUMNS = """
     (SELECT COUNT(*) FROM questions q WHERE q.paper_id = papers.id) AS question_count
 """
 
+# SQLite integers are 64-bit. A larger id can't exist, and looking one up raises OverflowError.
+_MAX_ID = 2**63 - 1
+
 
 @contextmanager
 def connect() -> Iterator[sqlite3.Connection]:
@@ -105,6 +108,8 @@ def add_paper(
 
 def get_paper(paper_id: int) -> dict[str, Any] | None:
     """Return one paper with every column (including full text), or None."""
+    if not 0 < paper_id <= _MAX_ID:
+        return None
     with connect() as conn:
         row = conn.execute("SELECT * FROM papers WHERE id = ?", (paper_id,)).fetchone()
     return _paper(row)
@@ -143,6 +148,8 @@ def library_ids_for(arxiv_ids: list[str]) -> dict[str, int]:
 
 def delete_paper(paper_id: int) -> str | None:
     """Delete a paper and its questions. Return its PDF file name, or None if it didn't exist."""
+    if not 0 < paper_id <= _MAX_ID:
+        return None
     with connect() as conn:
         row = conn.execute("SELECT pdf_path FROM papers WHERE id = ?", (paper_id,)).fetchone()
         if row is None:
@@ -151,9 +158,10 @@ def delete_paper(paper_id: int) -> str | None:
     return str(row["pdf_path"])
 
 
-def set_summary(paper_id: int, summary: str) -> None:
+def set_summary(paper_id: int, summary: str) -> bool:
+    """Store a paper's summary. Return False if the paper no longer exists."""
     with connect() as conn:
-        conn.execute("UPDATE papers SET summary = ? WHERE id = ?", (summary, paper_id))
+        return conn.execute("UPDATE papers SET summary = ? WHERE id = ?", (summary, paper_id)).rowcount > 0
 
 
 def add_question(paper_id: int, question: str, answer: str) -> dict[str, Any]:

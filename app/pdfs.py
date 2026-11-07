@@ -128,7 +128,15 @@ def _tidy(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
-_PLACEHOLDER_TITLES = {"untitled", "title", "paper", "document", "manuscript", "main", "article"}
+_PLACEHOLDER_TITLES = {"document", "manuscript"}  # shorter ones, such as "title", fail the length check
+
+
+# What arXiv and publishers' templates print above a title, as seen on real papers. arXiv can write
+# its stamp into the PDF's title field too, so this applies to both sources of a title.
+_NOT_A_TITLE_RE = re.compile(
+    r"arxiv:|.*\bmanuscript no\.?$|\(will be inserted by the editor\)|published as a conference paper",
+    re.IGNORECASE,
+)
 
 
 def _embedded_title(value: str | None) -> str | None:
@@ -138,7 +146,8 @@ def _embedded_title(value: str | None) -> str | None:
     if (
         len(title) < 8
         or lowered in _PLACEHOLDER_TITLES
-        or lowered.startswith("microsoft word")
+        or lowered.startswith(("untitled", "microsoft word"))
+        or _NOT_A_TITLE_RE.match(title)
         or re.search(r"\.(pdf|docx?|tex|dvi|ps)$", lowered)
     ):
         return None
@@ -149,33 +158,58 @@ def _embedded_authors(value: str | None) -> list[str]:
     text = " ".join((value or "").split())
     if not text:
         return []
-    parts = text.split(";") if ";" in text else re.split(r",|\band\b", text)
+    separator = ";" if ";" in text else r",|\band\b"
+    # Some PDFs put an email address between two names, and it must not end up in a name.
+    parts = re.split(rf"{separator}|\S+@\S+", text)
     return [part.strip() for part in parts if len(part.strip()) > 1]
 
 
 def title_from_text(text: str) -> str | None:
-    """Last-resort title: the first line that looks like prose, not an arXiv stamp or page number."""
+    """Last-resort title: the first line that looks like prose, not a stamp or a page number."""
     for line in text.split("\n"):
         line = " ".join(line.split())
-        if len(line) < 8 or line.lower().startswith("arxiv:") or not re.search(r"[A-Za-z]{3}", line):
+        # Three letters in a row, in any script. The minimum length is only for Latin text,
+        # because a title in Chinese or Japanese can be just a few characters.
+        too_short = len(line) < 8 and line.isascii()
+        if too_short or _NOT_A_TITLE_RE.match(line) or not re.search(r"[^\W\d_]{3}", line):
             continue
         return line[:300]
     return None
 
 
-_ABSTRACT_RE = re.compile(
-    r"\babstract\b[\s:.\-—–]*(.+?)"
-    r"(?=\n\s*(?:\d+\.?|[IVX]+\.)?\s*(?:introduction|keywords|index terms|ccs concepts)\b|\Z)",
-    re.IGNORECASE | re.DOTALL,
+_ABSTRACT_FLAGS = re.IGNORECASE | re.DOTALL | re.MULTILINE
+_ABSTRACT_TEXT = r"(.+?)(?=\n\s*(?:\d+\.?|[IVX]+\.)?\s*(?:introduction|keywords|index terms|ccs concepts)\b|\Z)"
+# Exact case, because a wrapped sentence can start a line with "abstract".
+_ABSTRACT_WORD = r"(?-i:Abstract|ABSTRACT)"
+# A heading starts its line, alone or followed by punctuation: "Abstract", "ABSTRACT:", "Abstract—".
+# That rules out titles like "Abstract Interpretation of Programs" and "Abstract-Based Testing".
+_ABSTRACT_HEADING_RE = re.compile(
+    rf"^\s*{_ABSTRACT_WORD}\s*(?:[:.—–]|-(?=\s)|$)[\s:.\-—–]*{_ABSTRACT_TEXT}", _ABSTRACT_FLAGS
+)
+# Some journals run the heading into the first sentence ("Abstract We present..."), so this is the
+# fallback when no line is a heading by itself. It can't be the first line: papers open with a title.
+_ABSTRACT_RUN_IN_RE = re.compile(rf"\n\s*{_ABSTRACT_WORD}\s+{_ABSTRACT_TEXT}", _ABSTRACT_FLAGS)
+
+
+# What real first pages print between an abstract and the introduction: a footnote, an author's
+# contact details, the arXiv stamp, or a conference notice.
+_ABSTRACT_FOOTER_RE = re.compile(
+    r"^\s*(?:[∗⋆†‡*]|e-?mail\s*:|tel\.|arxiv:\d|\d+(?:st|nd|rd|th) conference\b)", re.IGNORECASE | re.MULTILINE
 )
 
 
 def abstract_from_text(text: str) -> str | None:
-    """Fallback abstract: the text after an "Abstract" heading, up to the introduction."""
-    match = _ABSTRACT_RE.search(text)
+    """Fallback abstract: the text after an "Abstract" heading, up to the introduction or a footer."""
+    match = _ABSTRACT_HEADING_RE.search(text) or _ABSTRACT_RUN_IN_RE.search(text)
     if not match:
         return None
-    abstract = " ".join(match.group(1).split())
+    body = match.group(1)
+    footer = _ABSTRACT_FOOTER_RE.search(body)
+    if footer:
+        # Author names and affiliations can come before that line. They don't end in a period.
+        body = body[: footer.start()]
+        body = body[: body.rfind(".\n") + 1] or body
+    abstract = " ".join(body.split())
     if len(abstract) > MAX_FALLBACK_ABSTRACT_CHARS:
         cut = abstract[:MAX_FALLBACK_ABSTRACT_CHARS]
         abstract = cut[: cut.rfind(". ") + 1] or cut
@@ -199,6 +233,6 @@ def pdf_path(name: str) -> Path:
 
 def delete_pdf(name: str) -> None:
     try:
-        pdf_path(name).unlink(missing_ok=True)
+        pdf_path(name).unlink()
     except OSError:
-        pass  # a leftover file is harmless
+        pass  # it's already gone, or a leftover file, which is harmless

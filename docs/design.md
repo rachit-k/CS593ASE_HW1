@@ -17,7 +17,7 @@ Success means all five features work end to end in the demo video, someone can c
 | Storage | SQLite through Python's built-in `sqlite3`; PDFs on disk | Zero setup, and data survives restarts. |
 | Summary and Q&A context | Whole paper in the prompt (no RAG) | A paper is roughly 10–30k tokens. Full context answers questions like "what are the limitations?" better than retrieved chunks. |
 | Deployment | Local only (`uvicorn`) | The student's choice; no Docker and no hosting. |
-| Tests | None committed in HW1 | HW2 has the student generate the test suite with a coding agent; starting from zero gives a clean baseline. |
+| Tests | None committed in HW1; `tests/` (pytest) added in HW2 | HW2 has the student generate the test suite with a coding agent; starting from zero gives a clean baseline. |
 
 ## 3. Architecture
 
@@ -36,7 +36,7 @@ The header links to two sections, Search and Library; each paper also has its ow
 | Method and path | Purpose | Response |
 |---|---|---|
 | `GET /` | Search page. With `?q=`, it runs the search, in the order `&sort=` names: `relevance` (the default), `recent`, or `citations`. HTMX requests get only the results list; normal requests get the full page, so refresh and the back button work. | Page or results partial |
-| `POST /library` | Save an arXiv result, using the metadata fields from its card | Updated button: "In library · Open" |
+| `POST /library` | Save an arXiv result, using the metadata fields from its card | Updated slot: "In your library" and an Open link |
 | `GET /library` | Saved papers, newest first, plus the PDF upload form | Page |
 | `POST /library/upload` | Upload a PDF (multipart form) | `HX-Redirect` to the new paper's page |
 | `DELETE /papers/{id}` | Delete a paper, its questions, and its PDF file | Empty; the row disappears |
@@ -45,13 +45,13 @@ The header links to two sections, Search and Library; each paper also has its ow
 | `POST /papers/{id}/summary` | Generate the summary, or regenerate it | Summary partial |
 | `POST /papers/{id}/questions` | Ask a question | New Q&A item, appended to the list |
 
-Search shows up to 20 results. A Sort menu next to the search box picks the order: arXiv rank (relevance), most recent, or most cited. Changing it re-runs the search. Each card shows the title (linked to the arXiv abstract page), authors, year, and abstract (collapsed after a few lines), with a Save button. When sorted by most recent, the card also shows the paper's submission date; when sorted by most cited, it shows the citation count. Papers already in the library show "In library · Open" instead. Deletion happens from the library list and asks for confirmation first.
+Search shows up to 20 results. A Sort menu next to the search box picks the order: arXiv rank (relevance), most recent, or most cited. Changing it re-runs the search. Each card shows the title (linked to the arXiv abstract page), authors, year, and abstract (collapsed after a few lines), with a Save button. When sorted by most recent, the card also shows the paper's submission date; when sorted by most cited, it shows the citation count. Papers already in the library show "In your library" and an Open link instead. Deletion happens from the library list and asks for confirmation first.
 
 The paper page shows the stored summary if one exists, otherwise a Summarize button. The Q&A panel lists earlier questions and offers one-click starter questions based on the assignment's examples: the problem addressed, the main idea, the datasets, the limitations, and the comparison with baselines.
 
-htmx saves each page for the back button as HTML, which keeps attributes but not what was typed or picked since. So when new results arrive, a small script in `base.html` copies the search form's current query and sort into its attributes. A page restored from history then shows the query and sort that produced its results.
+htmx saves each page for the back button as HTML, which doesn't include what was typed or picked. The URL does say which search the results belong to, so when htmx restores a page, a small script in `base.html` sets the search form from the URL. Back and Forward then show the query and sort that produced the results.
 
-Gemini returns Markdown, which the server renders to HTML with raw HTML disabled, so model output can't inject markup into the page.
+Gemini returns Markdown, which the server renders to HTML with raw HTML disabled, so model output can't inject markup into the page. Images are off too: a paper's text can steer the model, and a remote image would make the browser contact another site as soon as the page loads.
 
 The header shows how many papers are in the library; the count updates when a paper is saved or deleted. After an upload that had to use the metadata fallbacks (section 8), the paper page says so, because the title and authors may be incomplete.
 
@@ -104,7 +104,7 @@ The app calls Gemini through the official `google-genai` Python SDK. All three f
 
 ## 7. arXiv integration
 
-**Search.** Search calls `https://export.arxiv.org/api/query` with `max_results=20`, a descriptive User-Agent, and a `sortBy` that follows the Sort menu. That is `relevance` for arXiv rank, or `submittedDate` for most recent (the first version's date, newest first). The query requires every word the user typed to match somewhere in the record, using the `all:` field with terms joined by `AND`. Characters that have meaning in arXiv's query syntax, such as quotes, parentheses, and colons, are stripped from the words first; apostrophes inside a word stay, because arXiv indexes "don't" as one word. Common English words are skipped: arXiv leaves Lucene's 33 standard stop words ("a", "the", "of", and so on) out of its title and abstract index, but not out of author names, where "A" can be an initial. Requiring `all:a` would therefore drop every paper without such an author, even one whose title starts with "A". If the whole query is an arXiv ID (for example `1706.03762` or `hep-th/9901001`), the client looks that paper up directly with `id_list` instead.
+**Search.** Search calls `https://export.arxiv.org/api/query` with `max_results=20`, a descriptive User-Agent, and a `sortBy` that follows the Sort menu. That is `relevance` for arXiv rank, or `submittedDate` for most recent (the first version's date, newest first). The query requires every word the user typed to match somewhere in the record, using the `all:` field with terms joined by `AND`. Characters that have meaning in arXiv's query syntax, such as quotes, parentheses, and colons, are stripped from the words first; apostrophes inside a word stay, because arXiv indexes "don't" as one word. Common English words are skipped: arXiv leaves Lucene's 33 standard stop words ("a", "the", "of", and so on) out of its title and abstract index, but not out of author names, where "A" can be an initial. Requiring `all:a` would therefore drop every paper without such an author, even one whose title starts with "A". If the whole query is an arXiv ID (for example `1706.03762` or `hep-th/9901001`) or an abs or pdf link to one, the client looks that paper up directly with `id_list` instead. A link can have a version, a trailing slash, a query string, or a fragment, and doesn't need `https://`, but it must be on arxiv.org.
 
 **Retries.** The arXiv API has been throttling heavily during 2026, so the client retries on HTTP 429, 5xx responses, and timeouts. It makes up to 3 attempts, waiting 3 s and then 6 s, with a 15 s timeout per attempt. If every attempt fails, the page shows "arXiv is busy right now — try again in a few seconds."
 
@@ -120,7 +120,7 @@ Semantic Scholar requests are retried on HTTP 429, 5xx responses, and timeouts: 
 
 **Saving.** The card submits the result's metadata along with its arXiv ID, so saving never needs a second arXiv API call. The server checks the ID against arXiv's ID formats and builds the abstract and PDF links from it, rather than accepting links from the form. That way the server only ever downloads from arxiv.org.
 
-Saving downloads the PDF with a 30 s timeout and a 50 MB cap, checks that the file starts with `%PDF`, and extracts its text. If either step fails, nothing is saved and the card shows the error.
+Saving downloads the PDF with a 30 s timeout and a 50 MB cap, checks that the file starts with `%PDF`, and extracts its text. If either step fails, nothing is saved and the card shows the error. If storing the paper then fails, its PDF is removed too.
 
 ## 8. PDF processing
 
@@ -131,10 +131,14 @@ Saving downloads the PDF with a 30 s timeout and a 50 MB cap, checks that the fi
 **Metadata fallback.** Upload metadata comes from the first source that works:
 
 1. Gemini extraction
-2. the title and author fields embedded in the PDF, when they look real (not empty, and not placeholders such as "untitled" or a `.docx` file name)
-3. the first non-empty line of text as the title, with no authors and no year
+2. the title and author fields embedded in the PDF, when they look real (not empty, and not placeholders such as "untitled", a `.docx` file name, or the stamp arXiv writes into some PDFs)
+3. the first line of text that looks like prose as the title, with no authors and no year. This skips arXiv stamps, page numbers, and what journal templates print above a title ("Noname manuscript No.", "(will be inserted by the editor)", "Published as a conference paper at..."). A title that wraps keeps only its first line.
 
-When Gemini isn't used, the abstract comes from the text after an "Abstract" heading on the first pages, if there is one.
+When Gemini isn't used, the abstract comes from the text after an "Abstract" heading on the first pages, if there is one. A heading starts its line and is spelled `Abstract` or `ABSTRACT`. It either stands alone or is followed by punctuation (`Abstract:`, `Abstract—`). Failing that, it can run straight into the first sentence (`Abstract We present...`), though not on the first line of the text, where it would more likely be a title such as "Abstract Interpretation of Programs". If there's no heading, the abstract stays empty rather than guessing.
+
+The abstract ends at the introduction, or earlier at a line that belongs to the page and not the abstract: a footnote, an author's contact details, the arXiv stamp, or a conference notice. Any author names just above that line go too, because the abstract then ends at the last line that finishes a sentence. So an abstract that continues on page 2 stops at the page-1 footer, which is short but clean. `tests/test_real_papers.py` measures all of this on 29 real papers, with arXiv's own metadata as the right answer.
+
+However a paper gets in, its title is cut to 500 characters and its abstract to 10,000.
 
 An upload never fails because of metadata alone. That also means uploads keep working when no Gemini key is configured.
 
@@ -143,15 +147,18 @@ An upload never fails because of metadata alone. That also means uploads keep wo
 | Situation | Behavior |
 |---|---|
 | Empty search box | No request is sent; the page prompts for a query |
-| No results | "No papers found" |
+| No results | "No papers matched", with a hint to try broader keywords |
 | arXiv still failing after retries | Inline "arXiv is busy" message (HTTP 503) |
+| arXiv answers with something that isn't a feed, such as an HTML page or an empty body | Inline error (HTTP 502), never "no results" |
 | Semantic Scholar still failing after retries (most cited only) | Inline "Semantic Scholar is busy" message (HTTP 503) that suggests another sort |
 | PDF download fails while saving | Inline error on that card; nothing saved (HTTP 502) |
+| The PDF from arXiv has no readable text, for example a scanned paper | Inline error on that card; nothing saved (HTTP 400) |
 | Non-PDF, too large, corrupt, or scanned upload | Inline error on the upload form (HTTP 400 or 413) |
 | `GEMINI_API_KEY` missing | Summary and Q&A panels explain how to set it; search, save, upload, and browsing keep working |
 | Gemini quota exhausted (HTTP 429) | Message names the model and suggests waiting or switching `GEMINI_MODEL` |
-| Other Gemini failure or timeout | Short message; nothing is stored |
-| Unknown paper id | 404 page |
+| Other Gemini failure or timeout, including a reply the app can't read | Short message (HTTP 502); nothing is stored. An upload uses the metadata fallbacks instead (section 8) |
+| The paper is deleted while Gemini is working on it | "That paper was deleted while Gemini was reading it." (HTTP 404); nothing is stored |
+| Unknown paper id, including a number too large for the database | 404 page |
 | Unexpected server error | Friendly error page, or an inline alert for HTMX requests; the traceback stays in the terminal |
 
 Error partials carry real HTTP status codes. HTMX is configured to swap 4xx and 5xx responses into the page, so errors appear inline instead of being silently dropped.
@@ -198,13 +205,20 @@ ai-research-assistant/
 ├── docs/
 │   ├── design.md          # this document
 │   └── plan.md            # implementation plan
+├── tests/                 # pytest suite; no network, no API key, temp library
+│   └── recordings/        # real API responses and real papers, replayed offline
+├── tools/
+│   ├── path_coverage.py   # conditions, and/or operands, and template branches
+│   └── mutation_test.py   # small code changes that no test notices
 ├── .claude/
 │   ├── settings.json      # Claude Code project settings (shared)
 │   └── skills/run-app/    # Claude Code skill: run the app, drive it in headless Chrome
 ├── CLAUDE.md              # Claude Code project instructions
 ├── .env.example
 ├── .gitignore
+├── pytest.ini
 ├── requirements.txt
+├── requirements-dev.txt   # test tools, on top of requirements.txt
 └── README.md
 ```
 
@@ -255,7 +269,6 @@ The following are left out on purpose:
 - user accounts
 - Docker or hosting
 - additional search sources
-- a committed test suite
 
 ## 15. Risks
 

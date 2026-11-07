@@ -6,6 +6,7 @@ retried a couple of times with a growing pause before giving up.
 
 from __future__ import annotations
 
+import io
 import re
 import time
 from collections.abc import Callable
@@ -35,8 +36,8 @@ RETRY_STATUSES = {429, 500, 502, 503, 504}
 TRANSPORT: httpx.BaseTransport | None = None
 
 # New-style IDs (2007 on): 1706.03762, 2401.12345. Old-style: hep-th/9901001, math.GT/0309136.
-_ARXIV_ID_RE = re.compile(r"^(?:\d{4}\.\d{4,5}|[a-z][a-z\-]*(?:\.[A-Z]{2})?/\d{7})$")
-_ID_PREFIX_RE = re.compile(r"^(?:https?://(?:www\.|export\.)?arxiv\.org/(?:abs|pdf)/|arxiv:)", re.I)
+_ARXIV_ID_RE = re.compile(r"^(?:\d{4}\.\d{4,5}|[a-z][a-z\-]*(?:\.[A-Z]{2})?/\d{7})$", re.ASCII)
+_ID_PREFIX_RE = re.compile(r"^(?:(?:https?://)?(?:www\.|export\.)?arxiv\.org/(?:abs|pdf)/|arxiv:)", re.I)
 _VERSION_RE = re.compile(r"v\d+$")
 _NON_WORD_RE = re.compile(r"[^\w\-.']+")  # anything but letters, digits, _, -, . and '
 
@@ -67,12 +68,15 @@ class ArxivResult:
 def normalize_id(raw: str) -> str | None:
     """Return the versionless arXiv ID in `raw`, or None if it isn't one.
 
-    Accepts plain IDs ("1706.03762v7"), "arXiv:" prefixes, and abs/pdf URLs.
+    Accepts plain IDs ("1706.03762v7"), "arXiv:" prefixes, and abs/pdf links, with or
+    without "https://", and with or without a trailing slash, query string, or fragment.
     """
-    candidate = _ID_PREFIX_RE.sub("", raw.strip())
+    candidate, has_prefix = _ID_PREFIX_RE.subn("", raw.strip())
+    if has_prefix:
+        candidate = re.split(r"[?#]", candidate, maxsplit=1)[0].rstrip("/")
     candidate = re.sub(r"\.pdf$", "", candidate, flags=re.I)
     candidate = _VERSION_RE.sub("", candidate)
-    return candidate if _ARXIV_ID_RE.match(candidate) else None
+    return candidate if _ARXIV_ID_RE.fullmatch(candidate) else None
 
 
 def abs_url(arxiv_id: str) -> str:
@@ -140,7 +144,7 @@ def _get_with_retries(client: httpx.Client, params: dict, sleep: Callable[[float
         except httpx.TimeoutException:
             problem = "timed out"
             continue
-        except httpx.TransportError:
+        except httpx.HTTPError:
             problem = "couldn't connect"
             continue
         if response.status_code == 200:
@@ -159,8 +163,10 @@ def _get_with_retries(client: httpx.Client, params: dict, sleep: Callable[[float
 
 def parse_feed(feed_text: str) -> list[ArxivResult]:
     """Parse an arXiv Atom feed into results, skipping malformed entries."""
-    feed = feedparser.parse(feed_text)
-    if feed.bozo and not feed.entries:
+    # A stream, because feedparser would open a plain string that looks like a file path or URL.
+    feed = feedparser.parse(io.BytesIO(feed_text.encode("utf-8")))
+    # An empty version means it isn't a feed at all, such as an HTML error page or an empty body.
+    if not feed.entries and (feed.bozo or not feed.get("version")):
         raise ArxivError("arXiv sent a response that isn't a search feed. Try again in a moment.", 502)
 
     results = []
