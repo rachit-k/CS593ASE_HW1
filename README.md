@@ -55,14 +55,45 @@ To remove a paper, click **Delete** next to it in the library. This also deletes
 
 ## Tests
 
+The test suite is in `tests/`. It has 1,263 test cases. The tests use temporary folders and fake versions of arXiv, Semantic Scholar, and Gemini, so they need no API key, no `.env`, and no network connection, and they never touch your library.
+
+### 1. Install the dependencies
+
+From the repo root, with Python 3.10 or newer:
+
 ```bash
-pip install -r requirements-dev.txt
-pytest                                                                         # everything
-pytest --cov=app --cov-branch --cov-report=term-missing --cov-fail-under=100   # coverage, which should stay at 100%
-pytest -m "not browser"                                                        # without the browser tests
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt     # the app's dependencies plus pytest, pytest-cov, Hypothesis, and Playwright
 ```
 
-The tests use temporary folders and fake versions of arXiv, Semantic Scholar, and Gemini, so they need no API key or network connection and never touch your library. The browser tests drive your installed Google Chrome, and are skipped if it isn't there.
+The browser tests drive your installed Google Chrome. Without Chrome, run `playwright install chromium` once, or the browser tests are skipped.
+
+### 2. Run the tests
+
+```bash
+pytest                       # everything; ends with "1263 passed" in about 30 seconds
+pytest -m "not browser"      # without the browser tests
+pytest tests/test_db.py      # one file
+```
+
+### 3. Reproduce the coverage results
+
+```bash
+pytest --cov=app --cov-branch --cov-report=term-missing --cov-fail-under=100
+```
+
+This prints line and branch coverage for each module in `app/`. The last lines should be:
+
+```
+TOTAL                   738      0    154      0   100%
+Required test coverage of 100% reached. Total coverage: 100.00%
+1263 passed
+```
+
+The command fails if coverage drops below 100%. Add `--cov-report=html` to get a browsable report in `htmlcov/`.
+
+### 4. Checks beyond coverage
 
 Three more checks go beyond coverage. Each one leaves your files alone:
 
@@ -71,6 +102,8 @@ python tools/path_coverage.py                               # conditions, and/or
 python tools/mutation_test.py                               # small code changes that no test notices (about half an hour)
 HYPOTHESIS_PROFILE=thorough pytest tests/test_properties.py # the property tests with 2,000 random inputs each
 ```
+
+`path_coverage.py` should report 100% for all three measures. `mutation_test.py` prints a score per file and a total, which was 97.1% (1,399 of 1,441 changes noticed), and writes the details to `mutation-report.json`.
 
 ## Project structure
 
